@@ -191,7 +191,41 @@ def render_diagnose_tab(model, backbone):
     st.session_state.history = st.session_state.history[:10]
 
 
-def render_performance_tab():
+def render_performance_tab(model, backbone):
+    st.subheader("Model Information")
+
+    arch_names = {
+        "mobilenet": "MobileNetV3Small (ImageNet-pretrained transfer learning)",
+        "custom": "Custom CNN (trained from scratch, no pretrained weights)",
+    }
+    total_params = model.count_params() if model is not None else None
+    trainable_params = (
+        sum(int(np.prod(w.shape)) for w in model.trainable_weights) if model is not None else None
+    )
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Architecture", arch_names.get(backbone, backbone or "—"))
+    c2.metric("Total parameters", f"{total_params:,}" if total_params else "—")
+    c3.metric("Input image size", "128 × 128 px")
+
+    if backbone == "mobilenet":
+        st.caption(
+            f"**Training strategy:** two-phase transfer learning — Phase 1 trains only the "
+            f"classification head ({trainable_params:,} params) with the pretrained MobileNetV3 "
+            "backbone frozen; Phase 2 unfreezes the backbone's top layers and fine-tunes the "
+            "full network at a low learning rate (1e-5). Field-conditioned data augmentation "
+            "(flip, rotation, zoom, translation, brightness, contrast) is applied throughout to "
+            "improve real-world generalization — see the Limitations section in the sidebar."
+        )
+    elif backbone == "custom":
+        st.caption(
+            f"**Training strategy:** trained end-to-end from randomly-initialized weights "
+            f"(all {trainable_params:,} parameters trainable from epoch 1), with the same "
+            "field-conditioned data augmentation applied. See the README's Model Comparison "
+            "section for why MobileNetV3 was selected as the production model instead."
+        )
+
+    st.divider()
     st.subheader("Model Performance")
 
     val_acc, real_acc = None, None
@@ -299,7 +333,7 @@ def main():
             render_diagnose_tab(model, backbone)
 
     with tab2:
-        render_performance_tab()
+        render_performance_tab(model, backbone)
 
 
 if __name__ == "__main__":
