@@ -6,6 +6,9 @@ Streamlit, with a deliberate focus on **real-world generalization**, not just
 lab-condition accuracy (see [Limitations](#limitations--real-world-generalization) below).
 
 ## Features
+- Two architectures trained and compared head-to-head — a from-scratch CNN
+  baseline vs. transfer learning — with the better one selected on evidence,
+  not assumption (see [Model Comparison](#model-comparison-custom-cnn-vs-transfer-learning))
 - Transfer-learning CNN (MobileNetV3Small, ImageNet-pretrained) across
   **38 disease classes** and 14 crop species (Apple, Corn, Grape, Potato,
   Tomato, and more)
@@ -13,12 +16,14 @@ lab-condition accuracy (see [Limitations](#limitations--real-world-generalizatio
   brightness, contrast) to reduce overfitting to plain lab backgrounds
 - Two-phase training: frozen feature extraction, then optional fine-tuning
   of the backbone's top layers
-- Streamlit UI: upload a leaf photo → diagnosis, confidence score, top-3
-  alternatives, and crop-specific treatment guidance
+- **Grad-CAM explainability**: every prediction shows a heatmap of which
+  region of the leaf the model actually focused on
+- Streamlit UI: tabbed layout (Diagnose / Model Performance), styled result
+  cards, session history, and a downloadable text diagnosis report
 - **Confidence gating**: low-confidence predictions are flagged as uncertain
   instead of shown as a false-confident diagnosis
 - Honest evaluation on both the lab-condition validation set AND an
-  independent real-world dataset (PlantDoc)
+  independent real-world dataset (PlantDoc), for both architectures
 
 ## Dataset
 [New Plant Diseases Dataset (Augmented)](https://www.kaggle.com/datasets/vipoooool/new-plant-diseases-dataset)
@@ -53,21 +58,62 @@ work against it:
    dataset of real, cluttered-background field photos — to honestly measure
    and report the internal-vs-field accuracy gap rather than hiding it
 
-_After running the evaluation, fill in your actual numbers:_
-- Internal validation accuracy (PlantVillage): `__%`
-- External real-world accuracy (PlantDoc): `__%`
+**Measured on this project:**
+- Internal validation accuracy (PlantVillage): **87.4%**
+- External real-world accuracy (PlantDoc): **16.9%**
+
+That ~70-point gap is real, and it's larger than what some published studies
+report — likely because several PlantDoc classes here have very few images
+(4-12), making per-class accuracy noisy, and because some PlantDoc "leaf"
+categories mix healthy and diseased photos ambiguously. Reporting it honestly,
+rather than only citing the 87.4%, is the point.
+
+## Model comparison: custom CNN vs. transfer learning
+
+Rather than assume transfer learning would win, both architectures were
+actually trained and evaluated on identical data, preprocessing, and
+augmentation:
+
+| | MobileNetV3 (transfer learning) | Custom CNN (from scratch) |
+|---|---|---|
+| Lab validation accuracy | **87.4%** | 85.8%* |
+| Real-world (PlantDoc) accuracy | **16.9%** | 13.6%* |
+| Params trained | ~22K (frozen backbone) → full net after fine-tuning | 15.05M (all trained from epoch 1) |
+| Time per epoch (CPU) | ~4-5 min | ~33 min |
+| Total training time | ~94 min (20 epochs: 15 frozen + 5 fine-tune) | ~165 min (only 5 epochs — see note) |
+
+\* *The custom CNN was stopped after 5 epochs (train accuracy still climbing:
+0.44 → 0.86) due to the ~6-8x slower per-epoch cost on CPU with no pretrained
+head start. Even under-trained, MobileNetV3 already beats it on both lab and
+real-world accuracy while training faster in total — the gap would likely
+widen further if the custom CNN were trained to full convergence, given how
+much more slowly it improves per unit of compute.*
+
+**Conclusion:** MobileNetV3Small was selected as the production model — it
+generalizes better to real-world photos, trains substantially faster per
+epoch, and starts from ImageNet features rather than learning basic visual
+patterns from scratch on a narrow, single-domain dataset.
+
+Reproduce this comparison:
+```bash
+python train.py --data_dir data --backbone custom --epochs 5 --output_dir outputs_custom
+python evaluate_plantdoc.py --plantdoc_dir PlantDoc-Dataset/test --model_path outputs_custom/trained_model.keras --output_dir outputs_custom
+```
 
 ## Project structure
 ```
 plant-disease-app/
-├── app.py                  # Streamlit app (with confidence gating)
+├── app.py                  # Streamlit app (tabs, Grad-CAM, history, confidence gating)
+├── gradcam.py               # Grad-CAM heatmap generation
 ├── train.py                # Training script (augmentation + transfer learning)
 ├── evaluate_plantdoc.py    # External real-world evaluation
 ├── class_names.py          # 38 class labels (order-sensitive)
 ├── disease_info.py         # Descriptions + treatment guidance per class
 ├── plantdoc_mapping.py     # Maps PlantDoc folders -> our 38 classes
+├── .streamlit/config.toml   # App color theme
 ├── requirements.txt
-└── outputs/                # trained_model.keras, metrics, plots (generated)
+├── outputs/                 # Active model: trained_model.keras, metrics, plots (generated)
+└── outputs_custom/          # Custom-CNN comparison run (generated, optional)
 ```
 
 ## Setup
@@ -116,7 +162,13 @@ classes. An optional fine-tuning phase unfreezes the backbone's top layers
 at a low learning rate for a further accuracy boost.
 
 ## Results
-Internal validation accuracy (PlantVillage): 87.4% External real-world accuracy (PlantDoc): 16.9% Underneath, add a line noting several PlantDoc classes had very few test images (as low as 4-12), so those numbers are somewhat noisy per-class.
+- Lab validation accuracy: **87.4%** (`outputs/training_curves.png`, `outputs/confusion_matrix.png`)
+- Real-world (PlantDoc) accuracy: **16.9%** (`outputs/plantdoc_confusion_matrix.png`)
+- Full per-class precision/recall/F1 for both: see the "Model Performance"
+  tab in the running app, or `outputs/classification_report.txt` and
+  `outputs/plantdoc_classification_report.txt`
+- See [Model comparison](#model-comparison-custom-cnn-vs-transfer-learning)
+  above for how this compares to a from-scratch CNN baseline
 
 ## Acknowledgements
 Dataset by [vipoooool on Kaggle](https://www.kaggle.com/datasets/vipoooool/new-plant-diseases-dataset).
