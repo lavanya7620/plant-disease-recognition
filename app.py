@@ -94,7 +94,8 @@ def build_report_text(info, top_class, top_conf, results):
         f"Condition: {info.get('condition', top_class)}",
         f"Confidence: {top_conf:.1%}",
         "",
-        f"Description: {info.get('description', '')}",
+        f"Symptoms: {info.get('symptoms', '')}",
+        f"Likely cause: {info.get('causes', '')}",
     ]
     if "healthy" not in top_class.lower():
         lines += ["", f"Suggested treatment / management: {info.get('treatment', 'N/A')}"]
@@ -151,7 +152,8 @@ def render_diagnose_tab(model, backbone):
         <h3>🩺 {info.get('condition', top_class)}</h3>
         <p>Crop: <b>{info.get('crop', '—')}</b> &nbsp;
         <span class="confidence-badge">{top_conf:.1%} confidence</span></p>
-        <p>{info.get('description', '')}</p>
+        <p><b>Symptoms:</b> {info.get('symptoms', '')}</p>
+        {'' if is_healthy else f"<p><b>Likely cause:</b> {info.get('causes', '')}</p>"}
         {'' if is_healthy else f"<p><b>Suggested treatment / management:</b><br>{info.get('treatment', 'N/A')}</p>"}
         </div>""",
         unsafe_allow_html=True,
