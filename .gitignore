@@ -1,6 +1,7 @@
 data/
 outputs/*.keras
 *.keras
+!outputs/trained_model.keras
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
