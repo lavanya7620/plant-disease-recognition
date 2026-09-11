@@ -35,11 +35,23 @@ if uploaded_file is not None:
         st.image(image, caption="Uploaded image", use_container_width=True)
 
     if st.button("🔍 Predict", type="primary"):
-        with st.spinner("Analyzing image..."):
+        with st.status("Analyzing leaf image...", expanded=True) as status:
+            st.write("🔎 Preprocessing image...")
             results, arr = predict(model, image, backbone)
+            top_class, top_conf = results[0]
+            info = DISEASE_INFO.get(top_class, {})
 
-        top_class, top_conf = results[0]
-        info = DISEASE_INFO.get(top_class, {})
+            st.write("🧠 Running model prediction...")
+            heatmap_overlay = None
+            if top_conf >= CONFIDENCE_THRESHOLD:
+                st.write("🔥 Generating Grad-CAM explanation...")
+                try:
+                    heatmap = make_gradcam_heatmap(model, backbone, arr, pred_index=CLASS_NAMES.index(top_class))
+                    heatmap_overlay = overlay_heatmap(image, heatmap)
+                except Exception:
+                    heatmap_overlay = None
+
+            status.update(label="Analysis complete ✅", state="complete", expanded=False)
 
         if top_conf < CONFIDENCE_THRESHOLD:
             st.warning(
@@ -55,6 +67,13 @@ if uploaded_file is not None:
         else:
             is_healthy = "healthy" in top_class.lower()
             card_class = "result-card" if is_healthy else "result-card disease"
+
+            if is_healthy:
+                st.balloons()
+                st.toast(f"Good news — {info.get('crop', 'this plant')} looks healthy!", icon="🌿")
+            else:
+                st.toast(f"Diagnosis complete: {info.get('condition', top_class)}", icon="🩺")
+
             st.markdown(
                 f"""<div class="{card_class}">
                 <h3>🩺 {info.get('condition', top_class)}</h3>
@@ -68,11 +87,9 @@ if uploaded_file is not None:
             )
 
             with col2:
-                try:
-                    heatmap = make_gradcam_heatmap(model, backbone, arr, pred_index=CLASS_NAMES.index(top_class))
-                    overlay = overlay_heatmap(image, heatmap)
-                    st.image(overlay, caption="Grad-CAM: where the model looked", use_container_width=True)
-                except Exception:
+                if heatmap_overlay is not None:
+                    st.image(heatmap_overlay, caption="Grad-CAM: where the model looked", use_container_width=True)
+                else:
                     st.caption("Grad-CAM visualization unavailable for this model.")
 
             with st.expander("Other possible matches"):
